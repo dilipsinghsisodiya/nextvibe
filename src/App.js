@@ -85,7 +85,7 @@ function App() {
     return (
         <div className="app">
             
-            <h1><a href="/" className="logo">NextVibe</a></h1>            
+            <h1><a href="/nextvibe/" className="logo">NextVibe</a></h1>            
 
             {!isConnected && !isSearching && (
                 <div className="chat-controls">
