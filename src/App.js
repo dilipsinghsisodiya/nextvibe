@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import io from 'socket.io-client';
 import './App.css'; 
 
-const socket = io('http://localhost:5000'); // Connect to the backend server
+const socket = io('https://nextvibe-backend.onrender.com/'); // Connect to the backend server
 
 function App() {
     const [username, setUsername] = useState('');
