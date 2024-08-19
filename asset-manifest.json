@@ -1,15 +1,15 @@
 {
   "files": {
     "main.css": "/nextvibe/static/css/main.0b55c59b.css",
-    "main.js": "/nextvibe/static/js/main.b969d7d7.js",
+    "main.js": "/nextvibe/static/js/main.c096275d.js",
     "static/js/453.6b678c9b.chunk.js": "/nextvibe/static/js/453.6b678c9b.chunk.js",
     "index.html": "/nextvibe/index.html",
     "main.0b55c59b.css.map": "/nextvibe/static/css/main.0b55c59b.css.map",
-    "main.b969d7d7.js.map": "/nextvibe/static/js/main.b969d7d7.js.map",
+    "main.c096275d.js.map": "/nextvibe/static/js/main.c096275d.js.map",
     "453.6b678c9b.chunk.js.map": "/nextvibe/static/js/453.6b678c9b.chunk.js.map"
   },
   "entrypoints": [
     "static/css/main.0b55c59b.css",
-    "static/js/main.b969d7d7.js"
+    "static/js/main.c096275d.js"
   ]
 }
