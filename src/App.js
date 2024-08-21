@@ -1,141 +1,142 @@
-import React, { useState, useEffect, useRef } from 'react';
-import io from 'socket.io-client';
-import './App.css'; 
+const express = require('express');
+const session = require('express-session');
+const cookieParser = require('cookie-parser');
+const { Server } = require('socket.io');
+const http = require('http');
+const path = require('path');
+const cors = require('cors');
 
-const socket = io('https://nextvibe-backend.onrender.com/'); // Connect to the backend server
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+    cors: {
+        origin: "https://nextvibe-backend.onrender.com/",
+        methods: ["GET", "POST"],
+        credentials: true
+    }
+});
+const port = 5000;
 
-function App() {
-    const [username, setUsername] = useState('');
-    const [partnerUsername, setPartnerUsername] = useState(null);
-    const [message, setMessage] = useState('');
-    const [chatMessages, setChatMessages] = useState([]);
-    const [isConnected, setIsConnected] = useState(false);
-    const [isSearching, setIsSearching] = useState(false);
 
-    const messageAreaRef = useRef(null); // Reference for the message area
+app.use(cookieParser());
+app.use(session({
+    secret: 'your-secret-key',
+    resave: false,
+    saveUninitialized: true,
+    cookie: { secure: false }
+}));
 
-    useEffect(() => {
-        socket.on('connect', () => {
-            console.log('Connected to server');
-        });
+app.use(cors({
+    origin: "https://nextvibe-backend.onrender.com/",
+    credentials: true
+}));
 
-        socket.on('user list', (users) => {
-            console.log('Active users:', users);
-        });
+app.use(express.static(path.join(__dirname, 'public')));
 
-        socket.on('chat paired', (partnerId) => {
-            console.log('Chat paired with:', partnerId);
-            setPartnerUsername(partnerId);
-            setIsConnected(true);
-            setIsSearching(false);
-        });
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
 
-        socket.on('receive message', (data) => {
-            setChatMessages((prev) => [...prev, { from: data.username, chat: data.chat }]);
-        });
+let users = new Map();
+let waitingUsers = {
+    chat: [],
+    call: [],
+    video: []
+};
 
-        socket.on('chat ended', () => {
-            alert('Chat ended by your partner.');
-            setIsConnected(false);
-            setPartnerUsername(null);
-            setChatMessages([]);
-        });
-
-        return () => {
-            socket.off('connect');
-            socket.off('user list');
-            socket.off('chat paired');
-            socket.off('receive message');
-            socket.off('chat ended');
-        };
-    }, []);
-
-    useEffect(() => {
-        if (messageAreaRef.current) {
-            messageAreaRef.current.scrollTop = messageAreaRef.current.scrollHeight;
-        }
-    }, [chatMessages]);
-
-    const handleStartChat = () => {
-        socket.emit('start random chat');
-        setIsSearching(true);
-    };
-
-    const handleSendMessage = () => {
-        if (message.trim() && isConnected) {
-            socket.emit('send message', message);
-            setMessage('');
-        }
-    };
-
-    const handleEndChat = () => {
-        socket.emit('end chat');
-        setIsConnected(false);
-        setPartnerUsername(null);
-        setChatMessages([]);
-    };
-
-    const handleKeyDown = (e) => {
-        if (e.key === 'Enter') {
-            e.preventDefault(); // Prevents the default action (e.g., form submission)
-            handleSendMessage();
-        }
-    };
-
-    return (
-        <div className="app">
-            
-            <h1><a href="/nextvibe/" className="logo">NextVibe</a></h1>            
-
-            {!isConnected && !isSearching && (
-                <div className="chat-controls">
-                    <button onClick={handleStartChat} id='startBtn' className="btn-primary">
-                        Start Random Chat
-                    </button>
-                </div>
-            )}
-
-            {isSearching && (
-                <div id="searchingMessage">
-                    <div className="spinner"></div>
-                    <p>Searching for a chat partner...</p>
-                </div>
-            )}
-
-            {isConnected && (
-                <div id="chatInterface">
-                    <div id="messageArea" ref={messageAreaRef}>
-                        {chatMessages.map((msg, index) => (
-                            <div
-                                key={index}
-                                className={`message ${msg.from === 'You' ? 'sent' : 'received'}`}
-                            >
-                                <strong>{msg.from}: </strong>{msg.chat}
-                            </div>
-                        ))}
-                    </div>
-
-                    <div className="input-wrapper">
-                        <input
-                            type="text"
-                            value={message}
-                            onChange={(e) => setMessage(e.target.value)}
-                            onKeyDown={handleKeyDown} // Add onKeyDown event
-                            placeholder="Type a message..."
-                        />
-                        <div className="button-group">
-                            <button onClick={handleSendMessage} className="btn-primary">
-                                Send
-                            </button>
-                            <button onClick={handleEndChat} className="btn-danger">
-                                End Chat
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-        </div>
-    );
+function generateRandomUsername(socketId) {
+    return `User_${socketId.substring(0, 5)}_${Math.floor(Math.random() * 1000)}`;
 }
 
-export default App;
+io.on('connection', (socket) => {
+    console.log('A user connected:', socket.id);
+
+    const randomUsername = generateRandomUsername(socket.id);
+    users.set(socket.id, { username: randomUsername, pairedWith: null, interactionType: null });
+    io.emit('user list', Array.from(users.values()).map(user => user.username));
+
+    socket.on('start interaction', (interactionType) => {
+        console.log(`${socket.id} started ${interactionType}`);
+
+        if (!users.has(socket.id)) return;
+
+        if (!waitingUsers[interactionType].includes(socket.id)) {
+            waitingUsers[interactionType].push(socket.id);
+
+            if (waitingUsers[interactionType].length >= 2) {
+                const user1 = waitingUsers[interactionType].shift();
+                const user2 = waitingUsers[interactionType].shift();
+
+                pairUsers(user1, user2, interactionType);
+            }
+        }
+    });
+
+    socket.on('send message', (chat) => {
+        const user = users.get(socket.id);
+        if (user && user.pairedWith) {
+            io.to(user.pairedWith).emit('receive message', { username: user.username, chat });
+            io.to(socket.id).emit('receive message', { username: 'You', chat });
+        }
+    });
+
+    socket.on('end interaction', () => {
+        console.log('User ended interaction:', socket.id);
+        const user = users.get(socket.id);
+
+        if (user && user.pairedWith) {
+            io.to(user.pairedWith).emit('interaction ended');
+            const pairedUser = users.get(user.pairedWith);
+            if (pairedUser) {
+                pairedUser.pairedWith = null;
+            }
+            user.pairedWith = null;
+        }
+
+        for (const type in waitingUsers) {
+            waitingUsers[type] = waitingUsers[type].filter(id => id !== socket.id);
+        }
+
+        io.emit('user list', Array.from(users.values()).map(user => user.username));
+    });
+
+    socket.on('disconnect', () => {
+        console.log('User disconnected:', socket.id);
+        const user = users.get(socket.id);
+
+        if (user) {
+            if (user.pairedWith) {
+                io.to(user.pairedWith).emit('interaction ended');
+                const pairedUser = users.get(user.pairedWith);
+                if (pairedUser) {
+                    pairedUser.pairedWith = null;
+                }
+            }
+
+            for (const type in waitingUsers) {
+                waitingUsers[type] = waitingUsers[type].filter(id => id !== socket.id);
+            }
+
+            users.delete(socket.id);
+            io.emit('user list', Array.from(users.values()).map(user => user.username));
+        }
+    });
+
+    socket.on('signal', (data) => {
+        io.to(data.to).emit('signal', { from: socket.id, signal: data.signal });
+    });
+});
+
+function pairUsers(user1Id, user2Id, interactionType) {
+    users.get(user1Id).pairedWith = user2Id;
+    users.get(user2Id).pairedWith = user1Id;
+    users.get(user1Id).interactionType = interactionType;
+    users.get(user2Id).interactionType = interactionType;
+
+    io.to(user1Id).emit(`${interactionType} paired`, user2Id);
+    io.to(user2Id).emit(`${interactionType} paired`, user1Id);
+}
+
+server.listen(port, () => {
+    console.log(`Server is listening at the port: ${port}`);
+});
